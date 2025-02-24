@@ -1,5 +1,14 @@
 ### GET request to example server
-GET https://examples.http-client.intellij.net/get
-    ?generated-in=PyCharm
-
+GET http://127.0.0.1:8000/users/
 ###
+POST 127.0.0.1:8000/users/
+Content-Type: application/json
+
+{
+  "email": "johndoe@gmail.com",
+  "password": "johnpass"
+}
+###
+GET 127.0.0.1:8000/users/johndoe@gmail.com/
+###
+DELETE 127.0.0.1:8000/users/1/
