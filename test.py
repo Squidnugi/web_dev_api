@@ -2,10 +2,24 @@ import requests
 
 BASE_URL = "http://127.0.0.1:8000"
 
+class User:
+    def __init__(self, email, password):
+        self.email = email
+        self.password_hash = password
+
+    def to_dict(self):
+        return {
+            "email": self.email,
+            "password": self.password_hash
+        }
+
+
 def create_user(email, password):
-    response = requests.post(f"{BASE_URL}/users/", json={"email": email, "password": password})
+    user = User(email, password)
+    response = requests.post(f"{BASE_URL}/users/", json=user.to_dict())
     if response.status_code == 200:
-        print("User created successfully:", response.json())
+        user_data = response.json()
+        print("User created successfully:", user_data['email'])
     else:
         print("Failed to create user:", response.status_code, response.json())
 

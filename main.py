@@ -3,6 +3,7 @@ from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from pydantic import BaseModel
 import os
+from typing import List
 
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")  # Change to your actual DB URL
@@ -56,7 +57,7 @@ def read_user(user: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-@app.get("/users/", response_model=list[UserResponse])
+@app.get("/users/", response_model=List[UserResponse])
 def read_users(db: Session = Depends(get_db)):
     return db.query(User).all()
 
