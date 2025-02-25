@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy import create_engine, Column, Integer, String, Date, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Date, DateTime, ForeignKey
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from pydantic import BaseModel
 import os
@@ -19,14 +19,31 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     password = Column(String,index=True)
+    account_type = Column(String, index=True)
+
+class schools(Base):
+    __tablename__ = "schools"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    address = Column(String, index=True)
+    city = Column(String, index=True)
+    state = Column(String, index=True)
+    zip = Column(String, index=True)
+    phone = Column(String, index=True)
+    email = Column(String, index=True)
+    website = Column(String, index=True)
+    domain = Column(String, index=True)
 
 class sessions(Base):
     __tablename__ = "sessions"
     id = Column(Integer, primary_key=True, index=True)
+    admin_id = Column(Integer, ForeignKey('users.id'), index=True)
     admin_email = Column(String, index=True)
-    school_type = Column(String, index=True)
+    school_id = Column(Integer, ForeignKey('schools.id'), index=True)
     school = Column(String, index=True)
+    supervisor_id = Column(Integer, ForeignKey('users.id'), index=True)
     supervisor_email = Column(String, index=True)
+    client_id = Column(Integer, ForeignKey('users.id'), index=True)
     client_email = Column(String, index=True)
     date = Column(Date, index=True)
 
@@ -37,6 +54,7 @@ Base.metadata.create_all(bind=engine)
 class UserCreate(BaseModel):
     email: str
     password: str
+    account_type: str
 
 class UserResponse(UserCreate):
     id: int
@@ -54,9 +72,10 @@ def get_db():
 # FastAPI App
 app = FastAPI()
 
+##for users table
 @app.post("/users/", response_model=UserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = User(email=user.email, password=user.password)
+    db_user = User(email=user.email, password=user.password, account_type=user.account_type)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -81,3 +100,5 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     db.delete(user)
     db.commit()
     return user
+
+## for sessions table

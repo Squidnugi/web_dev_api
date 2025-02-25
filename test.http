@@ -6,7 +6,8 @@ Content-Type: application/json
 
 {
   "email": "johndoe@gmail.com",
-  "password": "johnpass"
+  "password": "johnpass",
+  "account_type": "admin"
 }
 ###
 GET 127.0.0.1:8000/users/johndoe@gmail.com/
