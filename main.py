@@ -1,9 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy import create_engine, Column, Integer, String, Date, DateTime
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from pydantic import BaseModel
 import os
 from typing import List
+from datetime import datetime, date
+
 
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")  # Change to your actual DB URL
@@ -17,6 +19,16 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     password = Column(String,index=True)
+
+class sessions(Base):
+    __tablename__ = "sessions"
+    id = Column(Integer, primary_key=True, index=True)
+    admin_email = Column(String, index=True)
+    school_type = Column(String, index=True)
+    school = Column(String, index=True)
+    supervisor_email = Column(String, index=True)
+    client_email = Column(String, index=True)
+    date = Column(Date, index=True)
 
 # Create Tables
 Base.metadata.create_all(bind=engine)
