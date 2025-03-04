@@ -3,7 +3,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Date, DateTime, F
 from sqlalchemy.orm import sessionmaker, Session, declarative_base, relationship
 from pydantic import BaseModel
 import os
-from typing import List
+from typing import List, Optional
 from datetime import datetime, date
 
 
@@ -13,15 +13,19 @@ engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} i
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Define User Model
-class User(Base):
-    __tablename__ = "users"
+class Session(Base):
+    __tablename__ = "sessions"
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True)
-    password = Column(String, index=True)
-    account_type = Column(String, index=True)
     school_id = Column(Integer, ForeignKey('schools.id'), index=True)
-    sessions = relationship("Session", foreign_keys="[Session.supervisor_id, Session.client_id]", back_populates="user")
+    supervisor_id = Column(Integer, ForeignKey('users.id'), index=True)
+    supervisor_email = Column(String, index=True)
+    client_id = Column(Integer, ForeignKey('users.id'), index=True)
+    client_email = Column(String, index=True)
+    date = Column(Date, index=True)
+    additional_info = Column(String, index=True)
+    user = relationship("User", foreign_keys=[supervisor_id], back_populates="supervised_sessions")
+    client = relationship("User", foreign_keys=[client_id], back_populates="client_sessions")
+    school = relationship("schools", back_populates="sessions")
 
 class schools(Base):
     __tablename__ = "schools"
@@ -35,20 +39,21 @@ class schools(Base):
     website = Column(String, index=True)
     domain = Column(String, unique=True, index=True)
     sessions = relationship("Session", back_populates="school")
+    users = relationship("User", back_populates="school")
 
-class sessions(Base):
-    __tablename__ = "sessions"
+# Define User Model
+class User(Base):
+    __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    school_id = Column(Integer, ForeignKey('schools.id'), index=True)
-    school = Column(String, index=True)
-    supervisor_id = Column(Integer, ForeignKey('users.id'), index=True)
-    supervisor_email = Column(String, index=True)
-    client_id = Column(Integer, ForeignKey('users.id'), index=True)
-    client_email = Column(String, index=True)
-    date = Column(Date, index=True)
-    additional_info = Column(String, index=True)
-    user = relationship("User", foreign_keys=[supervisor_id, client_id], back_populates="sessions")
-    school = relationship("schools", back_populates="sessions")
+    email = Column(String, unique=True, index=True)
+    password = Column(String, index=True)
+    account_type = Column(String, index=True)
+    school_id = Column(Integer, ForeignKey('schools.id'), index=True, nullable=True)
+    supervised_sessions = relationship("Session", foreign_keys="[Session.supervisor_id]", back_populates="user")
+    client_sessions = relationship("Session", foreign_keys="[Session.client_id]", back_populates="client")
+    school = relationship("schools", back_populates="users")
+
+
 
 # Create Tables
 Base.metadata.create_all(bind=engine)
@@ -58,7 +63,7 @@ class UserCreate(BaseModel):
     email: str
     password: str
     account_type: str
-    school_id: str
+    school_id: Optional[int] = None
 
 class SchoolCreate(BaseModel):
     name: str
@@ -72,12 +77,12 @@ class SchoolCreate(BaseModel):
 
 class SessionCreate(BaseModel):
     school_id: int
-    school: str
     supervisor_id: int
     supervisor_email: str
     client_id: int
     client_email: str
     date: date
+    additional_info: Optional[str] = None
 
 class UserResponse(UserCreate):
     id: int
@@ -109,12 +114,16 @@ app = FastAPI()
 ##for users table
 @app.post("/users/", response_model=UserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = User(email=user.email, password=user.password, account_type=user.account_type)
+    db_user = User(
+        email=user.email,
+        password=user.password,
+        account_type=user.account_type,
+        school_id=user.school_id
+    )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
-
 @app.get("/users/{user}", response_model=UserResponse)
 def read_user(user: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == user).first()
@@ -169,28 +178,56 @@ def delete_school(school_id: int, db: Session = Depends(get_db)):
 
 @app.post("/sessions/", response_model=SessionResponse)
 def create_session(session: SessionCreate, db: Session = Depends(get_db)):
-    db_session = sessions(admin_id=session.admin_id, admin_email=session.admin_email, school_id=session.school_id, school=session.school, supervisor_id=session.supervisor_id, supervisor_email=session.supervisor_email, client_id=session.client_id, client_email=session.client_email, date=session.date)
+    db_session = Session(
+        school_id=session.school_id,
+        supervisor_id=session.supervisor_id,
+        supervisor_email=session.supervisor_email,
+        client_id=session.client_id,
+        client_email=session.client_email,
+        date=session.date,
+        additional_info=session.additional_info
+    )
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
     return db_session
-
 @app.get("/sessions/", response_model=List[SessionResponse])
 def read_sessions(db: Session = Depends(get_db)):
-    return db.query(sessions).all()
+    return db.query(Session).all()
 
 @app.get("/sessions/{session_id}", response_model=SessionResponse)
 def read_session(session_id: int, db: Session = Depends(get_db)):
-    session = db.query(sessions).filter(sessions.id == session_id).first()
+    session = db.query(Session).filter(Session.id == session_id).first()
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
 
 @app.delete("/sessions/{session_id}", response_model=SessionResponse)
 def delete_session(session_id: int, db: Session = Depends(get_db)):
-    session = db.query(sessions).filter(sessions.id == session_id).first()
+    session = db.query(Session).filter(Session.id == session_id).first()
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     db.delete(session)
     db.commit()
     return session
+
+@app.get("/sessions/supervisor/{supervisor_id}", response_model=List[SessionResponse])
+def get_sessions_by_supervisor(supervisor_id: int, db: Session = Depends(get_db)):
+    sessions = db.query(Session).filter(Session.supervisor_id == supervisor_id).all()
+    if not sessions:
+        raise HTTPException(status_code=404, detail="No sessions found for this supervisor")
+    return sessions
+
+@app.get("/sessions/client/{client_id}", response_model=List[SessionResponse])
+def get_sessions_by_client(client_id: int, db: Session = Depends(get_db)):
+    sessions = db.query(Session).filter(Session.client_id == client_id).all()
+    if not sessions:
+        raise HTTPException(status_code=404, detail="No sessions found for this client")
+    return sessions
+
+@app.get("/sessions/school/{school_id}", response_model=List[SessionResponse])
+def get_sessions_by_school(school_id: int, db: Session = Depends(get_db)):
+    sessions = db.query(Session).filter(Session.school_id == school_id).all()
+    if not sessions:
+        raise HTTPException(status_code=404, detail="No sessions found for this school")
+    return sessions
