@@ -13,3 +13,21 @@ Content-Type: application/json
 GET 127.0.0.1:8000/users/johndoe@gmail.com/
 ###
 DELETE 127.0.0.1:8000/users/1/
+###
+
+GET http://127.0.0.1:8000/schools/
+###
+
+POST 127.0.0.1:8000/schools/
+Content-Type: application/json
+
+{
+  "name": "School of Rock",
+  "address": "New York/New York/USA",
+  "city": "New York",
+  "county": "New York",
+  "postcode": "10001",
+  "phone": "1234567890",
+  "website": "www.schoolofrock.com",
+  "domain": "schoolofrock.com"
+}
