@@ -20,19 +20,19 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     password = Column(String,index=True)
     account_type = Column(String, index=True)
+    school_id = Column(Integer, ForeignKey('schools.id'), index=True)
 
 class schools(Base):
     __tablename__ = "schools"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
+    name = Column(String, unique=True, index=True)
     address = Column(String, index=True)
     city = Column(String, index=True)
     state = Column(String, index=True)
     zip = Column(String, index=True)
     phone = Column(String, index=True)
-    email = Column(String, index=True)
     website = Column(String, index=True)
-    domain = Column(String, index=True)
+    domain = Column(String, unique=True, index=True)
 
 class sessions(Base):
     __tablename__ = "sessions"
