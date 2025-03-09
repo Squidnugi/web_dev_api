@@ -1,9 +1,10 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import create_engine, Column, Integer, String, Date, ForeignKey
 from sqlalchemy.orm import sessionmaker, Session, declarative_base, relationship
 from pydantic import BaseModel
 import os
-from typing import List, Optional
+from typing import List, Optional, Annotated
 from datetime import date
 import uvicorn
 
@@ -13,7 +14,7 @@ engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} i
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Models
+# Table Models
 
 class School(Base):
     __tablename__ = "schools"
@@ -23,11 +24,12 @@ class School(Base):
     city = Column(String, index=True)
     county = Column(String, index=True)
     postcode = Column(String, index=True)
-    phone = Column(Integer, index=True)
+    phone = Column(String, index=True)  # Note: Using String for phone number
     website = Column(String, index=True)
     domain = Column(String, unique=True, index=True)
     users = relationship("User", back_populates="school")
     sessions = relationship("Session", back_populates="school")
+    session_edits = relationship("SessionEdit", back_populates="school")
 
 class Session(Base):
     __tablename__ = "sessions"
@@ -47,16 +49,19 @@ class Session(Base):
 class SessionEdit(Base):
     __tablename__ = "session_edits"
     id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
+    school_id = Column(Integer, ForeignKey("schools.id"), nullable=True)  # Keep this column
     supervisor_id = Column(Integer, ForeignKey("users.id"))
     supervisor_email = Column(String)
     client_id = Column(Integer)
     client_email = Column(String)
-    date = Column(Date)
+    date = Column(String)
     request = Column(String)
-    additional_info = Column(String, nullable=True)
+    additional_info = Column(String)
+
     session = relationship("Session", back_populates="session_edits")
     user = relationship("User", back_populates="session_edits")
+    school = relationship("School", back_populates="session_edits")  # Add this relationship
 
 class User(Base):
     __tablename__ = "users"
@@ -108,7 +113,8 @@ class SessionCreate(BaseModel):
     additional_info: Optional[str] = None
 
 class SessionEditCreate(BaseModel):
-    session_id: int
+    session_id: Optional[int] = None
+    school_id: Optional[int] = None
     supervisor_id: int
     supervisor_email: str
     client_id: int
@@ -159,9 +165,18 @@ def get_db():
 # FastAPI App
 app = FastAPI()
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+my_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'
+
+# Token Authentication
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    if token != my_token:
+        raise HTTPException(status_code=400, detail="Unauthorized")
+    return token
+
 # Users Endpoints
 @app.post("/users/", response_model=UserResponse)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
+async def create_user(token: Annotated[str, Depends(get_current_user)], user: UserCreate, db: Session = Depends(get_db)):
     db_user = User(**user.dict())
     db.add(db_user)
     db.commit()
@@ -169,19 +184,19 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     return db_user
 
 @app.get("/users/", response_model=List[UserResponse])
-def read_users(db: Session = Depends(get_db)):
+async def read_users(token: Annotated[str, Depends(get_current_user)], db: Session = Depends(get_db)):
     return db.query(User).all()
 
 @app.get("/users/{user_id}", response_model=UserResponse)
-def read_user(user_id: int, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.id == user_id).first()
+async def read_user(token: Annotated[str, Depends(get_current_user)], user_id: str, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.email == user_id).first()
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return db_user
 
 @app.put("/users/{user_id}", response_model=UserResponse)
-def update_user(user_id: int, user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.id == user_id).first()
+async def update_user(token: Annotated[str, Depends(get_current_user)], user_id: str, user: UserCreate, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.email == user_id).first()
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
     for key, value in user.dict().items():
@@ -191,7 +206,7 @@ def update_user(user_id: int, user: UserCreate, db: Session = Depends(get_db)):
     return db_user
 
 @app.delete("/users/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db)):
+async def delete_user(token: Annotated[str, Depends(get_current_user)], user_id: int, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.id == user_id).first()
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -201,7 +216,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
 
 # Schools Endpoints
 @app.post("/schools/", response_model=SchoolResponse)
-def create_school(school: SchoolCreate, db: Session = Depends(get_db)):
+async def create_school(token: Annotated[str, Depends(get_current_user)], school: SchoolCreate, db: Session = Depends(get_db)):
     db_school = School(**school.dict())
     db.add(db_school)
     db.commit()
@@ -209,18 +224,18 @@ def create_school(school: SchoolCreate, db: Session = Depends(get_db)):
     return db_school
 
 @app.get("/schools/", response_model=List[SchoolResponse])
-def read_schools(db: Session = Depends(get_db)):
+async def read_schools(token: Annotated[str, Depends(get_current_user)], db: Session = Depends(get_db)):
     return db.query(School).all()
 
 @app.get("/schools/{school_id}", response_model=SchoolResponse)
-def read_school(school_id: int, db: Session = Depends(get_db)):
+async def read_school(token: Annotated[str, Depends(get_current_user)], school_id: int, db: Session = Depends(get_db)):
     db_school = db.query(School).filter(School.id == school_id).first()
     if db_school is None:
         raise HTTPException(status_code=404, detail="School not found")
     return db_school
 
 @app.put("/schools/{school_id}", response_model=SchoolResponse)
-def update_school(school_id: int, school: SchoolCreate, db: Session = Depends(get_db)):
+async def update_school(token: Annotated[str, Depends(get_current_user)], school_id: int, school: SchoolCreate, db: Session = Depends(get_db)):
     db_school = db.query(School).filter(School.id == school_id).first()
     if db_school is None:
         raise HTTPException(status_code=404, detail="School not found")
@@ -231,7 +246,7 @@ def update_school(school_id: int, school: SchoolCreate, db: Session = Depends(ge
     return db_school
 
 @app.delete("/schools/{school_id}")
-def delete_school(school_id: int, db: Session = Depends(get_db)):
+async def delete_school(token: Annotated[str, Depends(get_current_user)], school_id: int, db: Session = Depends(get_db)):
     db_school = db.query(School).filter(School.id == school_id).first()
     if db_school is None:
         raise HTTPException(status_code=404, detail="School not found")
@@ -241,7 +256,7 @@ def delete_school(school_id: int, db: Session = Depends(get_db)):
 
 # Sessions Endpoints
 @app.post("/sessions/", response_model=SessionResponse)
-def create_session(session: SessionCreate, db: Session = Depends(get_db)):
+async def create_session(token: Annotated[str, Depends(get_current_user)], session: SessionCreate, db: Session = Depends(get_db)):
     db_session = Session(**session.dict())
     db.add(db_session)
     db.commit()
@@ -249,18 +264,18 @@ def create_session(session: SessionCreate, db: Session = Depends(get_db)):
     return db_session
 
 @app.get("/sessions/", response_model=List[SessionResponse])
-def read_sessions(db: Session = Depends(get_db)):
+async def read_sessions(token: Annotated[str, Depends(get_current_user)], db: Session = Depends(get_db)):
     return db.query(Session).all()
 
 @app.get("/sessions/{session_id}", response_model=SessionResponse)
-def read_session(session_id: int, db: Session = Depends(get_db)):
+async def read_session(token: Annotated[str, Depends(get_current_user)], session_id: int, db: Session = Depends(get_db)):
     db_session = db.query(Session).filter(Session.id == session_id).first()
     if db_session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return db_session
 
 @app.put("/sessions/{session_id}", response_model=SessionResponse)
-def update_session(session_id: int, session: SessionCreate, db: Session = Depends(get_db)):
+async def update_session(token: Annotated[str, Depends(get_current_user)], session_id: int, session: SessionCreate, db: Session = Depends(get_db)):
     db_session = db.query(Session).filter(Session.id == session_id).first()
     if db_session is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -271,7 +286,7 @@ def update_session(session_id: int, session: SessionCreate, db: Session = Depend
     return db_session
 
 @app.delete("/sessions/{session_id}")
-def delete_session(session_id: int, db: Session = Depends(get_db)):
+async def delete_session(token: Annotated[str, Depends(get_current_user)], session_id: int, db: Session = Depends(get_db)):
     db_session = db.query(Session).filter(Session.id == session_id).first()
     if db_session is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -279,9 +294,22 @@ def delete_session(session_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Session deleted"}
 
+
+@app.get("/sessions/{supervisor_id}", response_model=List[SessionResponse])
+async def read_sessions_by_supervisor(token: Annotated[str, Depends(get_current_user)], supervisor_id: str, db: Session = Depends(get_db)):
+    return db.query(Session).filter(Session.supervisor_email == supervisor_id).all()
+
+@app.get("/sessions/{client_id}", response_model=List[SessionResponse])
+async def read_sessions_by_client(token: Annotated[str, Depends(get_current_user)], client_id: str, db: Session = Depends(get_db)):
+    return db.query(Session).filter(Session.client_email == client_id).all()
+
+@app.get("/sessions/{school_id}/", response_model=List[SessionResponse])
+async def read_sessions_by_school(token: Annotated[str, Depends(get_current_user)], school_id: int, db: Session = Depends(get_db)):
+    return db.query(Session).filter(Session.school_id == school_id).all()
+
 # Contacts Endpoints
 @app.post("/contact/", response_model=ContactResponse)
-def create_contact(contact: ContactCreate, db: Session = Depends(get_db)):
+async def create_contact(token: Annotated[str, Depends(get_current_user)], contact: ContactCreate, db: Session = Depends(get_db)):
     db_contact = Contact(**contact.dict())
     db.add(db_contact)
     db.commit()
@@ -289,18 +317,18 @@ def create_contact(contact: ContactCreate, db: Session = Depends(get_db)):
     return db_contact
 
 @app.get("/contact/", response_model=List[ContactResponse])
-def read_contacts(db: Session = Depends(get_db)):
+async def read_contacts(token: Annotated[str, Depends(get_current_user)], db: Session = Depends(get_db)):
     return db.query(Contact).all()
 
 @app.get("/contact/{contact_id}", response_model=ContactResponse)
-def read_contact(contact_id: int, db: Session = Depends(get_db)):
+async def read_contact(token: Annotated[str, Depends(get_current_user)], contact_id: int, db: Session = Depends(get_db)):
     db_contact = db.query(Contact).filter(Contact.id == contact_id).first()
     if db_contact is None:
         raise HTTPException(status_code=404, detail="Contact not found")
     return db_contact
 
 @app.delete("/contact/{contact_id}")
-def delete_contact(contact_id: int, db: Session = Depends(get_db)):
+async def delete_contact(token: Annotated[str, Depends(get_current_user)], contact_id: int, db: Session = Depends(get_db)):
     db_contact = db.query(Contact).filter(Contact.id == contact_id).first()
     if db_contact is None:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -308,5 +336,59 @@ def delete_contact(contact_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Contact deleted"}
 
+# Session_edit endpoints
+@app.post("/session_edits/", response_model=SessionEditResponse)
+async def create_session_edit(token: Annotated[str, Depends(get_current_user)], session_edit: SessionEditCreate, db: Session = Depends(get_db)):
+    db_session_edit = SessionEdit(**session_edit.dict())
+    db.add(db_session_edit)
+    db.commit()
+    db.refresh(db_session_edit)
+    return db_session_edit
+
+@app.get("/session_edits/", response_model=List[SessionEditResponse])
+async def read_session_edits(token: Annotated[str, Depends(get_current_user)], db: Session = Depends(get_db)):
+    session_edits = db.query(SessionEdit).all()
+    if not session_edits:
+        raise HTTPException(status_code=404, detail="Session Edit not found")
+    return session_edits
+
+@app.get("/session_edits/{session_edit_id}", response_model=SessionEditResponse)
+async def read_session_edit(token: Annotated[str, Depends(get_current_user)], session_edit_id: int, db: Session = Depends(get_db)):
+    db_session_edit = db.query(SessionEdit).filter(SessionEdit.id == session_edit_id).first()
+    if db_session_edit is None:
+        raise HTTPException(status_code=404, detail="Session Edit not found")
+    return db_session_edit
+
+@app.delete("/session_edits/{session_edit_id}")
+async def delete_session_edit(token: Annotated[str, Depends(get_current_user)], session_edit_id: int, db: Session = Depends(get_db)):
+    db_session_edit = db.query(SessionEdit).filter(SessionEdit.id == session_edit_id).first()
+    if db_session_edit is None:
+        raise HTTPException(status_code=404, detail="Session Edit not found")
+    db.delete(db_session_edit)
+    db.commit()
+    return {"message": "Session Edit deleted"}
+
+@app.get("/session_edits/supervisor/{supervisor_id}", response_model=List[SessionEditResponse])
+async def read_session_edits_by_supervisor(token: Annotated[str, Depends(get_current_user)], supervisor_id: str, db: Session = Depends(get_db)):
+    session_edits = db.query(SessionEdit).filter(SessionEdit.supervisor_email == supervisor_id).all()
+    if not session_edits:
+        raise HTTPException(status_code=404, detail="Session Edit not found")
+    return session_edits
+
+@app.get("/session_edits/client/{client_id}", response_model=List[SessionEditResponse])
+async def read_session_edits_by_client(token: Annotated[str, Depends(get_current_user)], client_id: str, db: Session = Depends(get_db)):
+    session_edits = db.query(SessionEdit).filter(SessionEdit.client_email == client_id).all()
+    if not session_edits:
+        raise HTTPException(status_code=404, detail="Session Edit not found")
+    return session_edits
+
+@app.get("/session_edits/school/{school_id}", response_model=List[SessionEditResponse])
+async def read_session_edits_by_school(token: Annotated[str, Depends(get_current_user)], school_id: int, db: Session = Depends(get_db)):
+    session_edits = db.query(SessionEdit).join(Session).filter(Session.school_id == school_id).all()
+    if not session_edits:
+        raise HTTPException(status_code=404, detail="Session Edit not found")
+    return session_edits
+
+# Run the app
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
