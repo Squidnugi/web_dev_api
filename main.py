@@ -391,7 +391,3 @@ async def read_session_edits_by_school(token: Annotated[str, Depends(get_current
     if not session_edits:
         raise HTTPException(status_code=404, detail="Session Edit not found")
     return session_edits
-
-# Run the app
-if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
