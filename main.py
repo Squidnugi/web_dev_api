@@ -11,7 +11,7 @@ import uvicorn
 # Database Configuration
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:Squ!dnug!1@localhost"
+    "postgresql://postgres:Squ!dnug!1@db/myapp"
 )
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
