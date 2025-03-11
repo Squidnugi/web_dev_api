@@ -8,12 +8,16 @@ from typing import List, Optional, Annotated
 from datetime import date
 import uvicorn
 
+
 # Database Configuration
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:Squ!dnug!1@db/myapp"
+    "sqlite:///./app.db"
 )
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False}  # Needed for SQLite
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -391,3 +395,6 @@ async def read_session_edits_by_school(token: Annotated[str, Depends(get_current
     if not session_edits:
         raise HTTPException(status_code=404, detail="Session Edit not found")
     return session_edits
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
