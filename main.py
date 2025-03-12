@@ -397,4 +397,4 @@ async def read_session_edits_by_school(token: Annotated[str, Depends(get_current
     return session_edits
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
